@@ -78,6 +78,10 @@ KEYSTONE_SERVICE_PORT=${KEYSTONE_SERVICE_PORT:-5000}
 KEYSTONE_SERVICE_PORT_INT=${KEYSTONE_SERVICE_PORT_INT:-5001}
 KEYSTONE_SERVICE_PROTOCOL=${KEYSTONE_SERVICE_PROTOCOL:-$SERVICE_PROTOCOL}
 
+# Authentication
+KEYSTONE_DBUSER=${KEYSTONE_DBUSER:-$DATABASE_USER}
+KEYSTONE_DBPASSWORD=${KEYSTONE_DBPASSWORD:-$DATABASE_PASSWORD}
+
 # Bind hosts
 KEYSTONE_ADMIN_BIND_HOST=${KEYSTONE_ADMIN_BIND_HOST:-$KEYSTONE_SERVICE_HOST}
 # Set the tenant for service accounts in Keystone
@@ -225,7 +229,7 @@ function configure_keystone {
         iniset $KEYSTONE_CONF token provider keystone.token.providers.$KEYSTONE_TOKEN_FORMAT.Provider
     fi
 
-    iniset $KEYSTONE_CONF database connection `database_connection_url keystone`
+    iniset $KEYSTONE_CONF database connection `database_connection_url keystone $KEYSTONE_DBUSER $KEYSTONE_DBPASSWORD`
     iniset $KEYSTONE_CONF ec2 driver "keystone.contrib.ec2.backends.sql.Ec2"
 
     if [[ "$KEYSTONE_TOKEN_BACKEND" = "sql" ]]; then
@@ -396,6 +400,7 @@ function init_keystone {
 
     # (Re)create keystone database
     recreate_database keystone utf8
+    grant_or_create_dbuser keystone $KEYSTONE_DBUSER $KEYSTONE_DBPASSWORD
 
     # Initialize keystone database
     $KEYSTONE_DIR/bin/keystone-manage db_sync

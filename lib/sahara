@@ -116,7 +116,7 @@ function configure_sahara {
 
     iniset $SAHARA_CONF_FILE DEFAULT plugins $SAHARA_ENABLED_PLUGINS
 
-    iniset $SAHARA_CONF_FILE database connection `database_connection_url sahara`
+    iniset $SAHARA_CONF_FILE database connection `database_connection_url sahara $DATABASE_USER $DATABASE_PASSWORD`
 
     if is_service_enabled neutron; then
         iniset $SAHARA_CONF_FILE DEFAULT use_neutron true

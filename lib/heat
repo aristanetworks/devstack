@@ -39,6 +39,11 @@ HEAT_ENV_DIR=$HEAT_CONF_DIR/environment.d
 HEAT_TEMPLATES_DIR=$HEAT_CONF_DIR/templates
 HEAT_STACK_DOMAIN=`trueorfalse True $HEAT_STACK_DOMAIN`
 
+# Authentication
+HEAT_DBUSER=${HEAT_DBUSER:-$DATABASE_USER}
+HEAT_DBPASSWORD=${HEAT_DBPASSWORD:-$DATABASE_PASSWORD}
+HEAT_PASSWORD=${HEAT_PASSWORD:-$SERVICE_PASSWORD}
+
 # other default options
 HEAT_DEFERRED_AUTH=${HEAT_DEFERRED_AUTH:-trusts}
 
@@ -95,7 +100,7 @@ function configure_heat {
     iniset $HEAT_CONF DEFAULT heat_metadata_server_url http://$HEAT_API_CFN_HOST:$HEAT_API_CFN_PORT
     iniset $HEAT_CONF DEFAULT heat_waitcondition_server_url http://$HEAT_API_CFN_HOST:$HEAT_API_CFN_PORT/v1/waitcondition
     iniset $HEAT_CONF DEFAULT heat_watch_server_url http://$HEAT_API_CW_HOST:$HEAT_API_CW_PORT
-    iniset $HEAT_CONF database connection `database_connection_url heat`
+    iniset $HEAT_CONF database connection `database_connection_url heat $HEAT_DBUSER $HEAT_DBPASSWORD`
     iniset $HEAT_CONF DEFAULT auth_encryption_key `hexdump -n 16 -v -e '/1 "%02x"' /dev/urandom`
 
     iniset $HEAT_CONF DEFAULT region_name_for_services "$REGION_NAME"
@@ -114,7 +119,7 @@ function configure_heat {
     iniset $HEAT_CONF keystone_authtoken cafile $KEYSTONE_SSL_CA
     iniset $HEAT_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset $HEAT_CONF keystone_authtoken admin_user heat
-    iniset $HEAT_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $HEAT_CONF keystone_authtoken admin_password $HEAT_PASSWORD
     iniset $HEAT_CONF keystone_authtoken signing_dir $HEAT_AUTH_CACHE_DIR
 
     if is_ssl_enabled_service "key"; then
@@ -155,6 +160,7 @@ function init_heat {
 
     # (re)create heat database
     recreate_database heat utf8
+    grant_or_create_dbuser heat $HEAT_DBUSER $HEAT_DBPASSWORD
 
     $HEAT_DIR/bin/heat-manage db_sync
     create_heat_cache_dir
@@ -217,7 +223,7 @@ function create_heat_accounts {
     ADMIN_ROLE=$(openstack role list | awk "/ admin / { print \$2 }")
 
     HEAT_USER=$(get_or_create_user "heat" \
-        "$SERVICE_PASSWORD" $SERVICE_TENANT)
+        "$HEAT_PASSWORD" $SERVICE_TENANT)
     get_or_add_user_role $ADMIN_ROLE $HEAT_USER $SERVICE_TENANT
 
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
