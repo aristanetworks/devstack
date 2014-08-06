@@ -23,8 +23,11 @@ register_database postgresql
 function cleanup_database_postgresql {
     stop_service postgresql
     if is_ubuntu; then
-        # Get ruthless with mysql
+        # Get ruthless with postgresql
         apt_get purge -y postgresql*
+        sudo rm -rf /etc/postgresql
+        sudo rm -rf /etc/postgresql-common
+        sudo rm -rf /var/lib/postgresql
         return
     elif is_fedora || is_suse; then
         uninstall_package postgresql-server
@@ -47,9 +50,9 @@ function grant_or_create_dbuser_postgresql {
     local password=$3
     role_exists=$(psql -h$DATABASE_HOST -U$DATABASE_USER -dtemplate1 -tAc "SELECT 1 FROM \"pg_roles\" WHERE \"rolname\" = '$user'")
     if [[ $role_exists -ne 1 ]]; then
-        psql -h$DATABASE_HOST -U$DATABASE_USER -dtemplate1 -c "CREATE ROLE '$user' WITH PASSWORD '$password'"
+        psql -h$DATABASE_HOST -U$DATABASE_USER -dtemplate1 -c "CREATE ROLE \"$user\" WITH LOGIN PASSWORD '$password'"
     fi
-    psql -h$DATABASE_HOST -U$DATABASE_USER -dtemplate1 -c "GRANT ALL PRIVILEGES ON DATABASE '$db' to '$user'"
+    psql -h$DATABASE_HOST -U$DATABASE_USER -dtemplate1 -c "GRANT ALL PRIVILEGES ON DATABASE \"$db\" to \"$user\""
 }
 
 function configure_database_postgresql {
@@ -81,9 +84,9 @@ function configure_database_postgresql {
     # Set max_connections
     sudo sed -i "/max_connections/s/.*/max_connections = $MAX_DB_CONNECTIONS/" $PG_CONF
     # Do password auth from all IPv4 clients
-    sudo sed -i "/^host/s/all\s\+127.0.0.1\/32\s\+ident/$DATABASE_USER\t0.0.0.0\/0\tpassword/" $PG_HBA
+    sudo sed -i "/^host/s/all\s\+127.0.0.1\/32\s\+md5/all\t0.0.0.0\/0\tmd5/" $PG_HBA
     # Do password auth for all IPv6 clients
-    sudo sed -i "/^host/s/all\s\+::1\/128\s\+ident/$DATABASE_USER\t::0\/0\tpassword/" $PG_HBA
+    sudo sed -i "/^host/s/all\s\+::1\/128\s\+md5/all\t::0\/0\tmd5/" $PG_HBA
     restart_service postgresql
 
     # Create the role if it's not here or else alter it.
@@ -119,7 +122,7 @@ function database_connection_url_postgresql {
     local db=$1
     local user=$2
     local password=$3
-    echo "postgresql://$user:@password@$DATABASE_HOST/$db?client_encoding=utf8"
+    echo "postgresql://$user:$password@$DATABASE_HOST/$db?client_encoding=utf8"
 }
 
 
