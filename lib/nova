@@ -43,6 +43,11 @@ NOVA_CELLS_DB=${NOVA_CELLS_DB:-nova_cell}
 
 NOVA_API_PASTE_INI=${NOVA_API_PASTE_INI:-$NOVA_CONF_DIR/api-paste.ini}
 
+# Authentication
+NOVA_DBUSER=${NOVA_DBUSER:-$DATABASE_USER}
+NOVA_DBPASSWORD=${NOVA_DBPASSWORD:-$DATABASE_PASSWORD}
+NOVA_PASSWORD=${NOVA_PASSWORD:-$SERVICE_PASSWORD}
+
 # Public facing bits
 NOVA_SERVICE_HOST=${NOVA_SERVICE_HOST:-$SERVICE_HOST}
 NOVA_SERVICE_PORT=${NOVA_SERVICE_PORT:-8774}
@@ -336,7 +341,7 @@ create_nova_accounts() {
     if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
 
         local nova_user=$(get_or_create_user "nova" \
-            "$SERVICE_PASSWORD" $service_tenant)
+            "$NOVA_PASSWORD" $service_tenant)
         get_or_add_user_role $admin_role $nova_user $service_tenant
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
@@ -415,7 +420,7 @@ function create_nova_conf {
     iniset $NOVA_CONF DEFAULT s3_host "$SERVICE_HOST"
     iniset $NOVA_CONF DEFAULT s3_port "$S3_SERVICE_PORT"
     iniset $NOVA_CONF DEFAULT my_ip "$HOST_IP"
-    iniset $NOVA_CONF DEFAULT sql_connection `database_connection_url nova`
+    iniset $NOVA_CONF DEFAULT sql_connection `database_connection_url nova $NOVA_DBUSER $NOVA_DBPASSWORD`
     iniset $NOVA_CONF DEFAULT instance_name_template "${INSTANCE_NAME_PREFIX}%08x"
     iniset $NOVA_CONF osapi_v3 enabled "True"
 
@@ -442,7 +447,7 @@ function create_nova_conf {
         iniset $NOVA_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
         iniset $NOVA_CONF keystone_authtoken cafile $KEYSTONE_SSL_CA
         iniset $NOVA_CONF keystone_authtoken admin_user nova
-        iniset $NOVA_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+        iniset $NOVA_CONF keystone_authtoken admin_password $NOVA_PASSWORD
     fi
 
     iniset $NOVA_CONF keystone_authtoken signing_dir $NOVA_AUTH_CACHE_DIR
@@ -524,7 +529,7 @@ function create_nova_conf {
 function init_nova_cells {
     if is_service_enabled n-cell; then
         cp $NOVA_CONF $NOVA_CELLS_CONF
-        iniset $NOVA_CELLS_CONF DEFAULT sql_connection `database_connection_url $NOVA_CELLS_DB`
+        iniset $NOVA_CELLS_CONF DEFAULT sql_connection `database_connection_url $NOVA_CELLS_DB $NOVA_DBUSER $NOVA_DBPASSWORD`
         iniset $NOVA_CELLS_CONF DEFAULT rabbit_virtual_host child_cell
         iniset $NOVA_CELLS_CONF DEFAULT dhcpbridge_flagfile $NOVA_CELLS_CONF
         iniset $NOVA_CELLS_CONF cells enable True
@@ -582,17 +587,22 @@ function init_nova {
         # use latin1 by default, and then upgrades the database to utf8 (see the
         # 082_essex.py in nova)
         recreate_database nova latin1
+        
+        # Create nova user
+        grant_or_create_dbuser nova $NOVA_DBUSER $NOVA_DBPASSWORD
 
         # Migrate nova database
         $NOVA_BIN_DIR/nova-manage db sync
 
         if is_service_enabled n-cell; then
             recreate_database $NOVA_CELLS_DB latin1
+            grant_or_create_dbuser $NOVA_CELLS_DB $NOVA_DBUSER $NOVA_DBPASSWORD
         fi
 
         # (Re)create nova baremetal database
         if is_baremetal; then
             recreate_database nova_bm latin1
+            grant_or_create_dbuser nova_bm $NOVA_DBUSER $NOVA_DBPASSWORD
             $NOVA_BIN_DIR/nova-baremetal-manage db sync
         fi
     fi

@@ -42,6 +42,11 @@ CEILOMETER_CONF=$CEILOMETER_CONF_DIR/ceilometer.conf
 CEILOMETER_API_LOG_DIR=/var/log/ceilometer-api
 CEILOMETER_AUTH_CACHE_DIR=${CEILOMETER_AUTH_CACHE_DIR:-/var/cache/ceilometer}
 
+# Authentication
+CEILOMETER_DBUSER=${CEILOMETER_DBUSER:-$DATABASE_USER}
+CEILOMETER_DBPASSWORD=${CEILOMETER_DBPASSWORD:-$DATABASE_PASSWORD}
+CEILOMETER_PASSWORD=${CEILOMETER_PASSWORD:-$SERVICE_PASSWORD}
+
 # Support potential entry-points console scripts
 CEILOMETER_BIN_DIR=$(get_python_exec_prefix)
 
@@ -85,7 +90,7 @@ create_ceilometer_accounts() {
     # Ceilometer
     if [[ "$ENABLED_SERVICES" =~ "ceilometer-api" ]]; then
         CEILOMETER_USER=$(get_or_create_user "ceilometer" \
-            "$SERVICE_PASSWORD" $SERVICE_TENANT)
+            "$CEILOMETER_PASSWORD" $SERVICE_TENANT)
         get_or_add_user_role $ADMIN_ROLE $CEILOMETER_USER $SERVICE_TENANT
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
@@ -143,17 +148,17 @@ function configure_ceilometer {
     # call out to other services' public APIs
     # the alarm evaluator needs these options to call ceilometer APIs
     iniset $CEILOMETER_CONF service_credentials os_username ceilometer
-    iniset $CEILOMETER_CONF service_credentials os_password $SERVICE_PASSWORD
+    iniset $CEILOMETER_CONF service_credentials os_password $CEILOMETER_PASSWORD
     iniset $CEILOMETER_CONF service_credentials os_tenant_name $SERVICE_TENANT_NAME
 
     iniset $CEILOMETER_CONF keystone_authtoken identity_uri $KEYSTONE_AUTH_URI
     iniset $CEILOMETER_CONF keystone_authtoken admin_user ceilometer
-    iniset $CEILOMETER_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $CEILOMETER_CONF keystone_authtoken admin_password $CEILOMETER_PASSWORD
     iniset $CEILOMETER_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset $CEILOMETER_CONF keystone_authtoken signing_dir $CEILOMETER_AUTH_CACHE_DIR
 
     if [ "$CEILOMETER_BACKEND" = 'mysql' ] || [ "$CEILOMETER_BACKEND" = 'postgresql' ] ; then
-        iniset $CEILOMETER_CONF database connection `database_connection_url ceilometer`
+        iniset $CEILOMETER_CONF database connection `database_connection_url ceilometer $CEILOMETER_DBUSER $CEILOMETER_DBPASSWORD`
     else
         iniset $CEILOMETER_CONF database connection mongodb://localhost:27017/ceilometer
         configure_mongodb
@@ -202,6 +207,7 @@ function init_ceilometer {
     if is_service_enabled mysql postgresql; then
         if [ "$CEILOMETER_BACKEND" = 'mysql' ] || [ "$CEILOMETER_BACKEND" = 'postgresql' ] ; then
             recreate_database ceilometer utf8
+            grant_or_create_dbuser ceilometer $CEILOMETER_DBUSER $CEILOMETER_DBPASSWORD
             $CEILOMETER_BIN_DIR/ceilometer-dbsync
         fi
     fi
