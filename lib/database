@@ -8,9 +8,10 @@
 # after sourcing this file.
 
 # This is a wrapper for the specific database backends available.
-# Each database must implement four functions:
+# Each database must implement five functions:
 #
 # - recreate_database_$DATABASE_TYPE
+# - grant_or_create_dbuser_$DATABASE_TYPE
 # - install_database_$DATABASE_TYPE
 # - configure_database_$DATABASE_TYPE
 # - database_connection_url_$DATABASE_TYPE
@@ -21,6 +22,13 @@
 XTRACE=$(set +o | grep xtrace)
 set +o xtrace
 
+# For backward-compatibility, read in the MYSQL_HOST/USER variables and use
+# them as the default values for the DATABASE_HOST/USER variables.
+MYSQL_HOST=${MYSQL_HOST:-127.0.0.1}
+MYSQL_USER=${MYSQL_USER:-root}
+
+DATABASE_HOST=${DATABASE_HOST:-$MYSQL_HOST}
+DATABASE_USER=${DATABASE_USER:-$MYSQL_USER}
 
 # Register a database backend
 #
@@ -65,14 +73,6 @@ function initialize_database_backends {
 
     [ -z "$DATABASE_TYPE" ] && return 1
 
-    # For backward-compatibility, read in the MYSQL_HOST/USER variables and use
-    # them as the default values for the DATABASE_HOST/USER variables.
-    MYSQL_HOST=${MYSQL_HOST:-127.0.0.1}
-    MYSQL_USER=${MYSQL_USER:-root}
-
-    DATABASE_HOST=${DATABASE_HOST:-${MYSQL_HOST}}
-    DATABASE_USER=${DATABASE_USER:-${MYSQL_USER}}
-
     if [ -n "$MYSQL_PASSWORD" ]; then
         DATABASE_PASSWORD=$MYSQL_PASSWORD
     else
@@ -88,9 +88,6 @@ function initialize_database_backends {
     # You will need to send the same ``DATABASE_PASSWORD`` to every host if you are doing
     # a multi-node DevStack installation.
 
-    # NOTE: Don't specify ``/db`` in this string so we can use it for multiple services
-    BASE_SQL_CONN=${BASE_SQL_CONN:-${DATABASE_TYPE}://$DATABASE_USER:$DATABASE_PASSWORD@$DATABASE_HOST}
-
     return 0
 }
 
@@ -101,6 +98,18 @@ function recreate_database {
     local db=$1
     local charset=$2
     recreate_database_$DATABASE_TYPE $db $charset
+}
+
+# Grant, or create and grant if needed, a user for a given database. The user should be given
+# all privileges for that database.
+#  $1 The name of the database
+#  $2 The name of the user
+#  $3 The user's password
+function grant_or_create_dbuser {
+    local db=$1
+    local user=$2
+    local password=$3
+    grant_or_create_dbuser_$DATABASE_TYPE $db $user $password
 }
 
 # Install the database
@@ -115,9 +124,13 @@ function configure_database {
 
 # Generate an SQLAlchemy connection URL and output it using echo
 #  $1 The name of the database
+#  $2 The database user
+#  $3 The database user's password
 function database_connection_url {
     local db=$1
-    database_connection_url_$DATABASE_TYPE $db
+    local user=$2
+    local password=$3
+    database_connection_url_$DATABASE_TYPE $db $user $password
 }
 
 

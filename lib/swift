@@ -383,7 +383,7 @@ function configure_swift {
     iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/
     iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken admin_user swift
-    iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken admin_password $SERVICE_PASSWORD
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken admin_password $SWIFT_PASSWORD
     iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken signing_dir $SWIFT_AUTH_CACHE_DIR
     # This causes the authtoken middleware to use the same python logging
     # adapter provided by the swift proxy-server, so that request transaction
@@ -550,7 +550,7 @@ function create_swift_accounts {
     ADMIN_ROLE=$(openstack role list | awk "/ admin / { print \$2 }")
 
     SWIFT_USER=$(get_or_create_user "swift" \
-        "$SERVICE_PASSWORD" $SERVICE_TENANT)
+        "$SWIFT_PASSWORD" $SERVICE_TENANT)
     get_or_add_user_role $ADMIN_ROLE $SWIFT_USER $SERVICE_TENANT
 
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
@@ -621,6 +621,9 @@ function init_swift {
 }
 
 function install_swift {
+    # Read credentials
+    SWIFT_PASSWORD=${SWIFT_PASSWORD:-$SERVICE_PASSWORD}
+
     git_clone $SWIFT_REPO $SWIFT_DIR $SWIFT_BRANCH
     setup_develop $SWIFT_DIR
     if [ "$SWIFT_USE_MOD_WSGI" == "True" ]; then

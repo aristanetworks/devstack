@@ -330,7 +330,7 @@ function configure_neutron {
 function create_nova_conf_neutron {
     iniset $NOVA_CONF DEFAULT network_api_class "nova.network.neutronv2.api.API"
     iniset $NOVA_CONF neutron admin_username "$Q_ADMIN_USERNAME"
-    iniset $NOVA_CONF neutron admin_password "$SERVICE_PASSWORD"
+    iniset $NOVA_CONF neutron admin_password "$NEUTRON_PASSWORD"
     iniset $NOVA_CONF neutron admin_auth_url "$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_AUTH_PORT/v2.0"
     iniset $NOVA_CONF neutron auth_strategy "$Q_AUTH_STRATEGY"
     iniset $NOVA_CONF neutron admin_tenant_name "$SERVICE_TENANT_NAME"
@@ -379,7 +379,7 @@ function create_neutron_accounts {
     if [[ "$ENABLED_SERVICES" =~ "q-svc" ]]; then
 
         NEUTRON_USER=$(get_or_create_user "neutron" \
-            "$SERVICE_PASSWORD" $SERVICE_TENANT)
+            "$NEUTRON_PASSWORD" $SERVICE_TENANT)
         get_or_add_user_role $ADMIN_ROLE $NEUTRON_USER $SERVICE_TENANT
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
@@ -473,12 +473,18 @@ function create_neutron_initial_network {
 # init_neutron() - Initialize databases, etc.
 function init_neutron {
     recreate_database $Q_DB_NAME utf8
+    grant_or_create_dbuser $Q_DB_NAME $NEUTRON_DBUSER $NEUTRON_DBPASSWORD
     # Run Neutron db migrations
     $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF --config-file /$Q_PLUGIN_CONF_FILE upgrade head
 }
 
 # install_neutron() - Collect source and prepare
 function install_neutron {
+    # Read credentials
+    NEUTRON_DBUSER=${NEUTRON_DBUSER:-$DATABASE_USER}
+    NEUTRON_DBPASSWORD=${NEUTRON_DBPASSWORD:-$DATABASE_PASSWORD}
+    NEUTRON_PASSWORD=${NEUTRON_PASSWORD:-$SERVICE_PASSWORD}
+
     git_clone $NEUTRON_REPO $NEUTRON_DIR $NEUTRON_BRANCH
     setup_develop $NEUTRON_DIR
 }
@@ -625,7 +631,7 @@ function _configure_neutron_common {
     Q_PLUGIN_CONF_FILE=$Q_PLUGIN_CONF_PATH/$Q_PLUGIN_CONF_FILENAME
     cp $NEUTRON_DIR/$Q_PLUGIN_CONF_FILE /$Q_PLUGIN_CONF_FILE
 
-    iniset $NEUTRON_CONF database connection `database_connection_url $Q_DB_NAME`
+    iniset $NEUTRON_CONF database connection `database_connection_url $Q_DB_NAME $NEUTRON_DBUSER $NEUTRON_DBPASSWORD`
     iniset $NEUTRON_CONF DEFAULT state_path $DATA_DIR/neutron
 
     # If addition config files are set, make sure their path name is set as well
@@ -813,7 +819,7 @@ function _configure_neutron_service {
     iniset $NEUTRON_CONF DEFAULT notify_nova_on_port_data_changes $Q_NOTIFY_NOVA_PORT_DATA_CHANGES
     iniset $NEUTRON_CONF DEFAULT nova_url "$NOVA_SERVICE_PROTOCOL://$NOVA_SERVICE_HOST:$NOVA_SERVICE_PORT/v2"
     iniset $NEUTRON_CONF DEFAULT nova_admin_username nova
-    iniset $NEUTRON_CONF DEFAULT nova_admin_password $SERVICE_PASSWORD
+    iniset $NEUTRON_CONF DEFAULT nova_admin_password $NOVA_PASSWORD
     ADMIN_TENANT_ID=$(openstack project list | awk "/ service / { print \$2 }")
     iniset $NEUTRON_CONF DEFAULT nova_admin_tenant_id $ADMIN_TENANT_ID
     iniset $NEUTRON_CONF DEFAULT nova_admin_auth_url  "$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_AUTH_PORT/v2.0"
@@ -886,7 +892,7 @@ function _neutron_setup_keystone {
     iniset $conf_file $section identity_uri $KEYSTONE_AUTH_URI
     iniset $conf_file $section admin_tenant_name $SERVICE_TENANT_NAME
     iniset $conf_file $section admin_user $Q_ADMIN_USERNAME
-    iniset $conf_file $section admin_password $SERVICE_PASSWORD
+    iniset $conf_file $section admin_password $NEUTRON_PASSWORD
     if [[ -z $skip_auth_cache ]]; then
         iniset $conf_file $section signing_dir $NEUTRON_AUTH_CACHE_DIR
         # Create cache dir

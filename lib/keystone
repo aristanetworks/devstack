@@ -225,7 +225,7 @@ function configure_keystone {
         iniset $KEYSTONE_CONF token provider keystone.token.providers.$KEYSTONE_TOKEN_FORMAT.Provider
     fi
 
-    iniset $KEYSTONE_CONF database connection `database_connection_url keystone`
+    iniset $KEYSTONE_CONF database connection `database_connection_url keystone $KEYSTONE_DBUSER $KEYSTONE_DBPASSWORD`
     iniset $KEYSTONE_CONF ec2 driver "keystone.contrib.ec2.backends.sql.Ec2"
 
     if [[ "$KEYSTONE_TOKEN_BACKEND" = "sql" ]]; then
@@ -396,6 +396,7 @@ function init_keystone {
 
     # (Re)create keystone database
     recreate_database keystone utf8
+    grant_or_create_dbuser keystone $KEYSTONE_DBUSER $KEYSTONE_DBPASSWORD
 
     # Initialize keystone database
     $KEYSTONE_DIR/bin/keystone-manage db_sync
@@ -435,6 +436,10 @@ function install_keystonemiddleware {
 
 # install_keystone() - Collect source and prepare
 function install_keystone {
+    # Read credentials
+    KEYSTONE_DBUSER=${KEYSTONE_DBUSER:-$DATABASE_USER}
+    KEYSTONE_DBPASSWORD=${KEYSTONE_DBPASSWORD:-$DATABASE_PASSWORD}
+
     # only install ldap if the service has been enabled
     if is_service_enabled ldap; then
         install_ldap

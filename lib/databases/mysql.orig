@@ -46,18 +46,6 @@ function recreate_database_mysql {
     mysql -u$DATABASE_USER -p$DATABASE_PASSWORD -h$MYSQL_HOST -e "CREATE DATABASE $db CHARACTER SET $charset;"
 }
 
-function grant_or_create_dbuser_mysql {
-    local db=$1
-    local user=$2
-    local password=$3
-    user_exists=$(mysql -u$DATABASE_USER -p$DATABASE_PASSWORD -h$MYSQL_HOST -BNe "SELECT 1 FROM mysql.user WHERE user='$user' LIMIT 1;")
-    if [[ $user_exists -ne 1 ]]; then
-        mysql -u$DATABASE_USER -p$DATABASE_PASSWORD -h$MYSQL_HOST -e "CREATE USER '$user'@'%' IDENTIFIED BY '$password';"
-    fi
-
-    mysql -u$DATABASE_USER -p$DATABASE_PASSWORD -h$MYSQL_HOST -e "GRANT ALL PRIVILEGES ON $db.* TO '$user'@'%';"
-}
-
 function configure_database_mysql {
     local slow_log
     echo_summary "Configuring and starting MySQL"
@@ -92,7 +80,7 @@ function configure_database_mysql {
     fi
 
     # Update the DB to give user ‘$DATABASE_USER’@’%’ full control of the all databases:
-    sudo mysql -uroot -p$DATABASE_PASSWORD -h127.0.0.1 -e "GRANT ALL PRIVILEGES ON *.* TO '$DATABASE_USER'@'%' identified by '$DATABASE_PASSWORD' WITH GRANT OPTION;"
+    sudo mysql -uroot -p$DATABASE_PASSWORD -h127.0.0.1 -e "GRANT ALL PRIVILEGES ON *.* TO '$DATABASE_USER'@'%' identified by '$DATABASE_PASSWORD';"
 
     # Now update ``my.cnf`` for some local needs and restart the mysql service
 
@@ -170,9 +158,7 @@ EOF
 
 function database_connection_url_mysql {
     local db=$1
-    local user=$2
-    local password=$3
-    echo "mysql://$user:$password@$DATABASE_HOST/$db?charset=utf8"
+    echo "$BASE_SQL_CONN/$db?charset=utf8"
 }
 
 

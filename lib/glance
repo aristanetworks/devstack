@@ -85,7 +85,7 @@ function configure_glance {
     cp $GLANCE_DIR/etc/glance-registry.conf $GLANCE_REGISTRY_CONF
     iniset $GLANCE_REGISTRY_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
     inicomment $GLANCE_REGISTRY_CONF DEFAULT log_file
-    local dburl=`database_connection_url glance`
+    local dburl=`database_connection_url glance $GLANCE_DBUSER $GLANCE_DBPASSWORD`
     iniset $GLANCE_REGISTRY_CONF DEFAULT sql_connection $dburl
     iniset $GLANCE_REGISTRY_CONF DEFAULT use_syslog $SYSLOG
     iniset $GLANCE_REGISTRY_CONF paste_deploy flavor keystone
@@ -94,7 +94,7 @@ function configure_glance {
     configure_API_version $GLANCE_REGISTRY_CONF $IDENTITY_API_VERSION
     iniset $GLANCE_REGISTRY_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset $GLANCE_REGISTRY_CONF keystone_authtoken admin_user glance
-    iniset $GLANCE_REGISTRY_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $GLANCE_REGISTRY_CONF keystone_authtoken admin_password $GLANCE_PASSWORD
     iniset $GLANCE_REGISTRY_CONF keystone_authtoken signing_dir $GLANCE_AUTH_CACHE_DIR/registry
 
     cp $GLANCE_DIR/etc/glance-api.conf $GLANCE_API_CONF
@@ -110,7 +110,7 @@ function configure_glance {
     configure_API_version $GLANCE_API_CONF $IDENTITY_API_VERSION
     iniset $GLANCE_API_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset $GLANCE_API_CONF keystone_authtoken admin_user glance
-    iniset $GLANCE_API_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $GLANCE_API_CONF keystone_authtoken admin_password $GLANCE_PASSWORD
     if is_service_enabled qpid || [ -n "$RABBIT_HOST" ] && [ -n "$RABBIT_PASSWORD" ]; then
         iniset $GLANCE_API_CONF DEFAULT notification_driver messaging
     fi
@@ -126,7 +126,7 @@ function configure_glance {
         iniset $GLANCE_API_CONF DEFAULT default_store swift
         iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_URI/v2.0/
         iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance-swift
-        iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
+        iniset $GLANCE_API_CONF DEFAULT swift_store_key $GLANCE_PASSWORD
         iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
 
         iniset $GLANCE_API_CONF DEFAULT known_stores "glance.store.filesystem.Store, glance.store.http.Store, glance.store.swift.Store"
@@ -149,7 +149,7 @@ function configure_glance {
     iniuncomment $GLANCE_CACHE_CONF DEFAULT auth_user
     iniset $GLANCE_CACHE_CONF DEFAULT admin_user glance
     iniuncomment $GLANCE_CACHE_CONF DEFAULT auth_password
-    iniset $GLANCE_CACHE_CONF DEFAULT admin_password $SERVICE_PASSWORD
+    iniset $GLANCE_CACHE_CONF DEFAULT admin_password $GLANCE_PASSWORD
 
     cp -p $GLANCE_DIR/etc/policy.json $GLANCE_POLICY_JSON
     cp -p $GLANCE_DIR/etc/schema-image.json $GLANCE_SCHEMA_JSON
@@ -166,14 +166,14 @@ function create_glance_accounts {
     if is_service_enabled g-api; then
 
         GLANCE_USER=$(get_or_create_user "glance" \
-            "$SERVICE_PASSWORD" $SERVICE_TENANT_NAME)
+            "$GLANCE_PASSWORD" $SERVICE_TENANT_NAME)
         get_or_add_user_role service $GLANCE_USER $SERVICE_TENANT_NAME
 
         # required for swift access
         if is_service_enabled s-proxy; then
 
             GLANCE_SWIFT_USER=$(get_or_create_user "glance-swift" \
-                "$SERVICE_PASSWORD" $SERVICE_TENANT_NAME "glance-swift@example.com")
+                "$GLANCE_PASSWORD" $SERVICE_TENANT_NAME "glance-swift@example.com")
             get_or_add_user_role "ResellerAdmin" $GLANCE_SWIFT_USER $SERVICE_TENANT_NAME
         fi
 
@@ -213,6 +213,7 @@ function init_glance {
 
     # (Re)create glance database
     recreate_database glance utf8
+    grant_or_create_dbuser glance $GLANCE_DBUSER $GLANCE_DBPASSWORD
 
     # Migrate glance database
     $GLANCE_BIN_DIR/glance-manage db_sync
@@ -222,6 +223,11 @@ function init_glance {
 
 # install_glanceclient() - Collect source and prepare
 function install_glanceclient {
+    # Read credentials
+    GLANCE_DBUSER=${GLANCE_DBUSER:-$DATABASE_USER}
+    GLANCE_DBPASSWORD=${GLANCE_DBPASSWORD:-$DATABASE_PASSWORD}
+    GLANCE_PASSWORD=${GLANCE_PASSWORD:-$SERVICE_PASSWORD}
+
     git_clone $GLANCECLIENT_REPO $GLANCECLIENT_DIR $GLANCECLIENT_BRANCH
     setup_develop $GLANCECLIENT_DIR
 }

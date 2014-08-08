@@ -215,7 +215,7 @@ function configure_cinder {
     iniset $CINDER_CONF keystone_authtoken cafile $KEYSTONE_SSL_CA
     iniset $CINDER_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset $CINDER_CONF keystone_authtoken admin_user cinder
-    iniset $CINDER_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $CINDER_CONF keystone_authtoken admin_password $CINDER_PASSWORD
     iniset $CINDER_CONF keystone_authtoken signing_dir $CINDER_AUTH_CACHE_DIR
 
     iniset $CINDER_CONF DEFAULT auth_strategy keystone
@@ -224,7 +224,7 @@ function configure_cinder {
 
     iniset $CINDER_CONF DEFAULT my_ip "$CINDER_SERVICE_HOST"
     iniset $CINDER_CONF DEFAULT iscsi_helper tgtadm
-    iniset $CINDER_CONF DEFAULT sql_connection `database_connection_url cinder`
+    iniset $CINDER_CONF DEFAULT sql_connection `database_connection_url cinder $CINDER_DBUSER $CINDER_DBPASSWORD`
     iniset $CINDER_CONF DEFAULT api_paste_config $CINDER_API_PASTE_INI
     iniset $CINDER_CONF DEFAULT rootwrap_config "$CINDER_CONF_DIR/rootwrap.conf"
     iniset $CINDER_CONF DEFAULT osapi_volume_extension cinder.api.contrib.standard_extensions
@@ -303,7 +303,7 @@ function configure_cinder {
     configure_API_version $CINDER_CONF $IDENTITY_API_VERSION
     iniset $CINDER_CONF keystone_authtoken admin_user cinder
     iniset $CINDER_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
-    iniset $CINDER_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $CINDER_CONF keystone_authtoken admin_password $CINDER_PASSWORD
 
 }
 
@@ -323,7 +323,7 @@ function create_cinder_accounts {
     if [[ "$ENABLED_SERVICES" =~ "c-api" ]]; then
 
         CINDER_USER=$(get_or_create_user "cinder" \
-            "$SERVICE_PASSWORD" $SERVICE_TENANT)
+            "$CINDER_PASSWORD" $SERVICE_TENANT)
         get_or_add_user_role $ADMIN_ROLE $CINDER_USER $SERVICE_TENANT
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
@@ -361,6 +361,7 @@ function init_cinder {
     if is_service_enabled $DATABASE_BACKENDS; then
         # (Re)create cinder database
         recreate_database cinder utf8
+        grant_or_create_dbuser cinder $CINDER_DBUSER $CINDER_DBPASSWORD
 
         # Migrate cinder database
         $CINDER_BIN_DIR/cinder-manage db sync
@@ -382,6 +383,11 @@ function init_cinder {
 
 # install_cinder() - Collect source and prepare
 function install_cinder {
+    # Read credentials
+    CINDER_DBUSER=${CINDER_DBUSER:-$DATABASE_USER}
+    CINDER_DBPASSWORD=${CINDER_DBPASSWORD:-$DATABASE_PASSWORD}
+    CINDER_PASSWORD=${CINDER_PASSWORD:-$SERVICE_PASSWORD}
+
     git_clone $CINDER_REPO $CINDER_DIR $CINDER_BRANCH
     setup_develop $CINDER_DIR
 }
